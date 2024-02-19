@@ -292,7 +292,7 @@ class KMeans(cluster):
 
             instances_data_frame["make_blob() Cluster Assignments"] = make_blobs_cluster_assignments
             sns.scatterplot(data=instances_data_frame, x="Feature 1", y="Feature 2",
-                            s=scatter_plot_dot_size, hue="make_blob() Cluster Assignments", palette="Set1",
+                            s=scatter_plot_dot_size, hue="make_blob() Cluster Assignments", palette="Set2",
                             ax=axes[1])
             axes[1].set_title("make_blob() Clustering", fontweight="bold", fontsize=15)
             axes[1].set_xlabel("x's", fontweight="bold", fontsize=15)
