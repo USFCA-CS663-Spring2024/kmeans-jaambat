@@ -5,15 +5,15 @@ Assignment 2
 """
 import math
 
-from matplotlib.colors import ListedColormap
-
 from cluster import cluster
 from typing import Tuple
-import random
-import sys
-import pandas as pd
+
 import matplotlib.pyplot as plt
+import numpy
+import pandas as pd
+import random
 import seaborn as sns
+import sys
 
 
 class KMeans(cluster):
@@ -37,15 +37,24 @@ class KMeans(cluster):
         self.num_clusters = k
         self.max_iterations = max_iterations
 
-    def fit(self, x: list) -> Tuple[list, list]:
+    def fit(self, x: list, x_range: tuple = None, y_range: tuple = None) -> Tuple[list, list]:
         """
         Fits data into the number of clusters as specified by self.num_clusters and the number of convergence
         attempts as specified by self.max_iterations.
         :param x: list of n instances with d number of features for each instance. This is a matrix.
+        :param x_range: tuple of the centroid's x range (min, max). Randomized centroid positions could possibly be
+                        dispersed too far given the range of the data. Selecting centroids within a reasonable range
+                        initialize centroids within reasonable ranges of the actual data.
+        :param y_range: tuple of the centroid's x range (min, max). Randomized centroid positions could possibly be
+                        dispersed too far given the range of the data. Selecting centroids within a reasonable range
+                        initialize centroids within reasonable ranges of the actual data.
         :return: Tuple[list, list].
                  Tuple[0] is the list of cluster hypotheses for each instance.
                  Tuple[1] is a list of lists of the cluster centroid coordinates.
         """
+        if type(x) is numpy.ndarray:
+            x = x.tolist()
+
         if len(x) <= 0 or type(x) is not list:
             raise ValueError("Must provide a non-empty list for x.")
 
@@ -62,15 +71,9 @@ class KMeans(cluster):
         if num_dimensions == 0:
             raise ValueError("Must provide instances with at least one dimension to cluster.")
 
-        # Dimensions validated, assign random cluster positions using a min_value of -100 and max_value of 100 so that
-        # clusters have reasonable space for dispersion when random values are chosen for each dimension.
-        centroid_coordinate_map = {}
-        for i in range(self.num_clusters):
-            random_coordinates = [None] * num_dimensions
-            random_coordinates = [random.randint(-1000, 1000) for _ in random_coordinates]
-
-            centroid_coordinate_map[i] = random_coordinates
-
+        centroid_coordinate_map = self.get_randomly_dispersed_centroids(num_dimensions=num_dimensions,
+                                                                        x_range=x_range,
+                                                                        y_range=y_range)
         # Initial centroid coordinates placed, begin convergence
         for i in range(self.max_iterations):
             # Get the closest centroids for each of the instances
@@ -91,6 +94,75 @@ class KMeans(cluster):
                                 for centroid_num in centroid_coordinate_map]
 
         return closest_centroids, centroid_coordinates
+
+    def get_randomly_dispersed_centroids(self, num_dimensions: int, x_range: tuple, y_range: tuple) -> dict:
+        """
+        Helper method to get randomly dispersed centroids. Assign random cluster positions using a min_value and
+        max_value so that clusters have reasonable space for dispersion when random values are chosen for each dimension
+        Additionally, the centroids are selecting with minimum dispersion of 0.6 standard deviations to ensure adequate
+        dispersion of randomly selected centroids. Dispersion thresholds are incrementally adjusted if the 0.6 threshold
+        is too high of a value.
+        :return: dictionary of initially dispersed cluster centroid coordinates.
+        """
+        # Dimensions validated,
+        good_dispersion = False
+        std_tolerance = 0.65
+        centroid_coordinate_map = None
+
+        while not good_dispersion:
+            centroid_coordinate_map = {}
+            for i in range(self.num_clusters):
+                random_coord = [0] * num_dimensions
+
+                x_min_range = -1000
+                x_max_range = 1000
+
+                y_min_range = -1000
+                y_max_range = 1000
+
+                if x_range:
+                    x_min_range = x_range[0]
+                    x_max_range = x_range[1]
+
+                if y_range:
+                    y_min_range = x_range[0]
+                    y_max_range = x_range[1]
+
+                # random_coordinates: [x, y, z, ... ]
+                random_coord[0] = random.randint(x_min_range, x_max_range)
+                random_coord[1] = random.randint(y_min_range, y_max_range)
+
+                # Store a random coordinate per centroid number
+                centroid_coordinate_map[i] = random_coord
+
+            # Check the dispersion of the points to ensure they are not too close. If so, select other random centroids.
+            centroid_coordinates = [centroid_coordinate_map.get(centroid_num, None)
+                                    for centroid_num in centroid_coordinate_map]
+            coordinates_data_frame = pd.DataFrame(centroid_coordinates)
+            less_dispersion_counter = 0
+            for i in range(num_dimensions):
+                # normalize the coordinates + get std to determine dispersion
+                coordinates_dimension_i = coordinates_data_frame.iloc[:, i]
+                coordinates_max = coordinates_dimension_i.max()
+                coordinates_min = coordinates_dimension_i.min()
+                coordinates_delta = coordinates_max - coordinates_min
+                dimension_i_normalized = (coordinates_dimension_i - coordinates_min) / coordinates_delta
+                dimension_standard_deviation = dimension_i_normalized.std()
+
+                # Make sure the dimensions are not too far.
+                if dimension_standard_deviation < std_tolerance:
+                    less_dispersion_counter += 1
+
+            if less_dispersion_counter == 0:
+                good_dispersion = True
+            else:
+                # Bring-in the standard deviation tolerance
+                std_tolerance -= 0.001
+
+        if centroid_coordinate_map is None:
+            raise ValueError("There was an error creating the centroid_coordinate_map.")
+
+        return centroid_coordinate_map
 
     def get_closest_centroids(self, instances: list, centroid_coordinate_map: dict) -> list:
         """
@@ -166,16 +238,25 @@ class KMeans(cluster):
             # Update the old averages with the new ones (if any)
             centroid_coordinate_map[centroid_num] = average_dimensions
 
-    def plot_clustered_instances(self, instances: list, closest_centroids: list, scatter_plot_dot_size: int = 150,
-                                 scatter_plot_title="Scatter Plot of Clustered Instances"):
+    def plot_clustered_instances(self, instances: list,
+                                 closest_centroids: list,
+                                 scatter_plot_dot_size: int = 150,
+                                 scatter_plot_title="Scatter Plot of Clustered Instances",
+                                 compare_against_make_blob: bool = False,
+                                 make_blobs_cluster_assignments: list = None):
         """
         Method to plot instances in their respective clusters.
         :param instances: list of instance data of n-dimensions.
         :param closest_centroids: list of closest centroids whose indexes are directly related to instance indexes.
-        :param centroid_coordinates: list of coordinates for each centroid.
         :param scatter_plot_dot_size: int of the dot size for the scatter plot.
         :param scatter_plot_title: str of the title for the scatter plot.
+        :param compare_against_make_blob: bool to indicate if comparing against cluster assignments.
+                                                    This option will create a subplot for the comparison.
+        :param make_blobs_cluster_assignments: list of scikit-learn's cluster assignments as compared to my
+                                               closest_centroids list.
         """
+        if type(instances) is numpy.ndarray:
+            instances = instances.tolist()
 
         if len(instances) <= 0:
             raise ValueError("Must provide an instances list with length >= 0")
@@ -188,15 +269,47 @@ class KMeans(cluster):
         instances_data_frame.columns = df_column_names
 
         instances_data_frame["Closest Centroids"] = closest_centroids
-        figures, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
-        sns.scatterplot(data=instances_data_frame, x="Feature 1", y="Feature 2",
-                        s=scatter_plot_dot_size, hue="Closest Centroids", palette="Set1")
 
-        axes.set_xlabel("Feature 1", fontweight="bold", fontsize=15)
-        axes.set_ylabel("Feature 2", fontweight="bold", fontsize=15)
+        if compare_against_make_blob:
+            # Plotting against the cluster_assignments, make 1 x 2 subplots.
+            figures, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
 
-        plt.title(scatter_plot_title, fontweight="bold", fontsize=20)
-        plt.legend(bbox_to_anchor=(1, 1), title="Cluster of Closest Centroid")
-        plt.show()
-        print()
+            # First plot the KMeans implementation.
+            sns.scatterplot(data=instances_data_frame, x="Feature 1", y="Feature 2",
+                            s=scatter_plot_dot_size, hue="Closest Centroids", palette="Set1",
+                            ax=axes[0])
 
+            axes[0].set_title("KMeans.fit() Performance", fontweight="bold", fontsize=15)
+            axes[0].set_xlabel("x's", fontweight="bold", fontsize=15)
+            axes[0].set_ylabel("y's", fontweight="bold", fontsize=15)
+
+            # Plot the cluster_assignments
+            if make_blobs_cluster_assignments is None:
+                raise ValueError("Must provide a list of scikit-learn's cluster assignments.")
+
+            if type(make_blobs_cluster_assignments) is numpy.ndarray:
+                make_blobs_cluster_assignments = make_blobs_cluster_assignments.tolist()
+
+            instances_data_frame["make_blob() Cluster Assignments"] = make_blobs_cluster_assignments
+            sns.scatterplot(data=instances_data_frame, x="Feature 1", y="Feature 2",
+                            s=scatter_plot_dot_size, hue="make_blob() Cluster Assignments", palette="Set1",
+                            ax=axes[1])
+            axes[1].set_title("make_blob() Clustering", fontweight="bold", fontsize=15)
+            axes[1].set_xlabel("x's", fontweight="bold", fontsize=15)
+            axes[1].set_ylabel("y's", fontweight="bold", fontsize=15)
+
+            plt.legend(bbox_to_anchor=(1, 1), title="Cluster Assignments")
+
+            plt.show()
+        else:
+            # Only plot data without comparing performance.
+            figures, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+            sns.scatterplot(data=instances_data_frame, x="Feature 1", y="Feature 2",
+                            s=scatter_plot_dot_size, hue="Closest Centroids", palette="Set1")
+
+            axes.set_xlabel("x's", fontweight="bold", fontsize=15)
+            axes.set_ylabel("y's", fontweight="bold", fontsize=15)
+
+            plt.title(scatter_plot_title, fontweight="bold", fontsize=20)
+            plt.legend(bbox_to_anchor=(1, 1), title="Cluster Assignments")
+            plt.show()

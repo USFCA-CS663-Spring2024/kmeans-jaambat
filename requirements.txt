@@ -3,3 +3,4 @@ pandas
 notebook
 matplotlib
 seaborn
+scikit-learn
