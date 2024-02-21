@@ -243,7 +243,8 @@ class KMeans(cluster):
                                  scatter_plot_dot_size: int = 150,
                                  scatter_plot_title="Scatter Plot of Clustered Instances",
                                  compare_against_make_blob: bool = False,
-                                 make_blobs_cluster_assignments: list = None):
+                                 make_blobs_cluster_assignments: list = None,
+                                 figure_file_name=None):
         """
         Method to plot instances in their respective clusters.
         :param instances: list of instance data of n-dimensions.
@@ -254,6 +255,7 @@ class KMeans(cluster):
                                                     This option will create a subplot for the comparison.
         :param make_blobs_cluster_assignments: list of scikit-learn's cluster assignments as compared to my
                                                closest_centroids list.
+        :param figure_file_name: str of the figure file name.
         """
         if type(instances) is numpy.ndarray:
             instances = instances.tolist()
@@ -299,11 +301,13 @@ class KMeans(cluster):
             axes[1].set_ylabel("y's", fontweight="bold", fontsize=15)
 
             plt.legend(bbox_to_anchor=(1, 1), title="Cluster Assignments")
+            if figure_file_name:
+                plt.savefig(figure_file_name)
 
             plt.show()
         else:
             # Only plot data without comparing performance.
-            figures, axes = plt.subplots(nrows=1, ncols=1, figsize=(5, 5))
+            figures, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
             sns.scatterplot(data=instances_data_frame, x="Feature 1", y="Feature 2",
                             s=scatter_plot_dot_size, hue="Closest Centroids", palette="Set1")
 
@@ -312,4 +316,10 @@ class KMeans(cluster):
 
             plt.title(scatter_plot_title, fontweight="bold", fontsize=20)
             plt.legend(bbox_to_anchor=(1, 1), title="Cluster Assignments")
+
+            if figure_file_name:
+                axes.figure.savefig(figure_file_name)
+
             plt.show()
+
+
